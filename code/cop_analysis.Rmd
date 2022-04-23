@@ -1,0 +1,255 @@
+---
+title: "COP Analysis"
+author: "Jeff Cegan"
+date: '2022-04-21'
+output: html_document
+editor_options:
+  chunk_output_type: console
+---
+
+<br>
+
+```{r global-options, include=FALSE}
+knitr::opts_chunk$set(fig.width=9, fig.height=6, fig.path='knitr_figs/',
+                          include=FALSE,echo=TRUE, warning=FALSE, message=FALSE)
+#include chunk, echo code, don't print messages or warnings
+```
+
+```{r load packages}
+pkgs = c('plotly','here','skimr','janitor','plotly','lemon',"tidyverse")
+inst = lapply(pkgs, library, character.only = TRUE) # load them
+knit_print.data.frame <- lemon_print
+```
+
+```{r read input files}
+att <- read.csv('input/attendance.csv', stringsAsFactors=TRUE)
+fil <- read.csv('input/filters.csv', stringsAsFactors=TRUE) %>% rename(CountryCode = Country.code, StateTerritory = State.Territory)
+```
+
+```{r}
+length(unique(att$CountryCode))
+length(unique(fil$CountryCode))
+inner<- inner_join(att,fil, by = 'CountryCode')
+length(unique(inner$CountryCode))
+df <- left_join(att, fil, by = 'CountryCode')
+length(unique(df$CountryCode))
+
+#cop list for graphics
+Conference <- paste0("COP ",1:21)
+```
+
+<br>
+
+#### Countries from the attendance table without a filter counterpart (LDC/SIDS assignment)
+
+SCG was Serbia and Montenegro when they still were one country prior to 2006. Now SCG is divided into SRB and MNE.
+
+-   Should we equate an SCG (1) attendance to both an SRB (1) and MNE (1) attendance for years SCG attended and SRB, MNE didn't exist? Or should we treat SCG as a separate country entirely? Or should we ignore?
+
+<br>
+
+```{r, include=TRUE, echo=FALSE, render=lemon_print}
+att %>% filter(!CountryCode %in% unique(inner$CountryCode)) %>% distinct(CountryCode) %>% rename('Country Code' = CountryCode)
+```
+
+<br>
+
+#### Countries from the filter table (LDC/SIDS information) without COP attendance
+
+<br>
+
+```{r, include=TRUE, echo=FALSE, render=lemon_print}
+fil %>% select(CountryCode, StateTerritory) %>% filter(!CountryCode %in% unique(inner$CountryCode)) %>% distinct(CountryCode, StateTerritory) %>% rename('State Territory' = StateTerritory,'Country Code' = CountryCode)
+```
+
+<br> <br>
+
+#### Time Series: All 192 Attending Countries (Mean Delegates)
+
+<br>
+
+```{r, aggregate LDC, SIDS, Non-SIDS}
+#create LDC or SIDS column
+rowstart <- nrow(df)
+df <- df %>% mutate(LDC_SIDS = ifelse(LDC == 1 | SIDS == 1, "LDC or SIDS","Non LDC/SIDS"))
+rowend <- nrow(df)
+rowstart == rowend
+
+#aggregate by status
+adf <- df %>% group_by(LDC_SIDS,Year) %>% summarize(Median_Delegates = median(Delegates),Mean_Delegates = mean(Delegates), n = n())
+```
+
+```{r, include=TRUE, echo=FALSE}
+adf <- adf %>% na.omit() %>% mutate(Conference = c(Conference))
+
+fig <- adf %>% 
+  na.omit() %>% 
+  ggplot(aes(Year,Mean_Delegates,label=Conference)) + 
+  geom_line(aes(color=LDC_SIDS)) +
+  geom_point() +
+  theme_bw() +
+  labs(x="Year", y='Mean Delegates', title= 'COP Attendance') +
+  theme(plot.title = element_text(hjust = 0.5, face='bold', size = 16),
+        axis.title = element_text(size = 14),
+        axis.text = element_text(face='bold', size = 12),
+        legend.text=element_text(size=12)) +
+  scale_color_discrete(name="")
+
+fig %>% ggplotly(tooltip = c('Conference','Mean_Delegates'))
+```
+
+<br> <br>
+
+#### Time Series: All 192 Attending Countries (Median Delegates)
+
+<br>
+
+```{r, include=TRUE, echo=FALSE}
+adf <- adf %>% na.omit() %>% mutate(Conference = c(Conference))
+
+fig <- adf %>% 
+  na.omit() %>% 
+  ggplot(aes(Year,Median_Delegates,label=Conference)) + 
+  geom_line(aes(color=LDC_SIDS)) +
+  geom_point() +
+  theme_bw() +
+  labs(x="Year", y='Median Delegates', title= 'COP Attendance') +
+  theme(plot.title = element_text(hjust = 0.5, face='bold', size = 16),
+        axis.title = element_text(size = 14),
+        axis.text = element_text(face='bold', size = 12),
+        legend.text=element_text(size=12)) +
+  scale_color_discrete(name="")
+
+fig %>% ggplotly(tooltip = c('Conference','Median_Delegates'))
+```
+
+<br> <br>
+
+#### Multiplier of Non-LDC/SIDS vs. LDC/SIDS Countries
+
+<br>
+
+$$\frac{mean(Delegates_{LDC/SIDS})_{year_i}}{mean(Delegates_{non-LDC/SIDS})_{year_i}}
+$$
+
+<br>
+
+```{r}
+#LDC_SIDS column to factor prior to pivot wider
+#Calculate percentage increase of LDC/non-LDC for graph
+adf$LDC_SIDS <- as.factor(gsub("/","",gsub(" ","",adf$LDC_SIDS)))
+adf_perc <- adf %>% select(LDC_SIDS,Year,Mean_Delegates) %>% 
+  pivot_wider(names_from = LDC_SIDS, values_from = Mean_Delegates) %>% 
+  mutate(Multiplier = NonLDCSIDS/LDCorSIDS)
+adf_perc
+```
+
+```{r, include=TRUE, echo=FALSE}
+#Bar graph LDC/non-LDC percentage over time
+fig<-adf_perc %>%  
+  ggplot(aes(x=Year, y=Multiplier,label=Conference)) + 
+  geom_bar(stat="identity", fill='steel blue') +
+  theme_bw() +
+  labs(x="Year", y='Multiplier', title= 'Non-LDC SIDS: Share at the Table') +
+  theme(plot.title = element_text(hjust = 0.5, face='bold', size = 16),
+       axis.title = element_text(size = 14),
+       axis.text = element_text(face='bold', size = 12),
+       axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0)),
+       legend.text=element_text(size=10)) 
+  # scale_y_continuous(labels = scales::percent_format(scale = 1))
+
+fig %>% ggplotly(tooltip = c('Multiplier','Conference'), width = 680)
+
+```
+
+<br> <br>
+
+#### Time Series: Top 10 of 105 Attending Non-LDC/SIDS Countries
+
+<br>
+
+```{r, various non-ldc/sids aggregations}
+#filter by status aggregate by country
+tempdf <- df %>% filter(LDC_SIDS == "Non LDC/SIDS") %>% group_by(StateTerritory) %>% summarize(Mean_Delegates = mean(Delegates), n = n()) %>% arrange(desc(Mean_Delegates))
+
+topcountries <- tempdf[1:10,'StateTerritory']
+bottomcountries <- tempdf[11:nrow(tempdf),'StateTerritory']
+
+bdf_bottomcountries_all <- df %>% 
+  filter(LDC_SIDS == "Non LDC/SIDS", StateTerritory %in% bottomcountries$StateTerritory) %>% 
+  group_by(StateTerritory) %>% 
+  summarize(Mean_Delegates = mean(Delegates), n = n())
+
+bdf_bottomcountries <- df %>% 
+  filter(LDC_SIDS == "Non LDC/SIDS", StateTerritory %in% bottomcountries$StateTerritory) %>% 
+  group_by(Year) %>% 
+  summarize(Mean_Delegates = mean(Delegates), n = n()) %>% 
+  mutate(StateTerritory = as.factor('Remaining Average'))
+
+bdf_topcountries <- df %>% 
+  filter(LDC_SIDS == "Non LDC/SIDS") %>% 
+  group_by(StateTerritory,Year) %>% 
+  summarize(Mean_Delegates = mean(Delegates), n = n()) %>% 
+  filter(StateTerritory %in% topcountries$StateTerritory)
+
+#append top and bottom for same graph
+bdf <- bind_rows(bdf_topcountries,bdf_bottomcountries)
+
+bdf_avg <- bdf %>% 
+  group_by(StateTerritory) %>% 
+  summarise(Mean_Delegates = mean(Mean_Delegates))
+
+#append top and bottom for table
+bdf_avg_all <- rbind(bdf_topcountries %>% group_by(StateTerritory) %>% summarize(Mean_Delegates =mean(Mean_Delegates)),bdf_bottomcountries_all %>% group_by(StateTerritory) %>% summarize(Mean_Delegates =mean(Mean_Delegates)))
+```
+
+```{r, include=TRUE, echo=FALSE}
+
+#legend labels in order, modified names
+  names <- c("Brazil","France","USA","Japan","Canada","China","Korea","Denmark","Germany",              "Indonesia","Other Non-LDC/SIDS")
+  
+#order values for labels  
+  m_values <- bdf_avg %>% select(Mean_Delegates) %>% arrange(desc(Mean_Delegates))
+  values = paste0("(",as.character(as.integer(round(m_values$Mean_Delegates,0))),")")
+  legend_labels <- paste(names,values)
+  
+#order factors for legend
+  bdf$StateTerritory <- factor(bdf$StateTerritory, 
+              levels=c(as.character(topcountries$StateTerritory),"Remaining Average"), 
+              labels=legend_labels)
+  
+#graph  
+bdf %>% 
+  na.omit() %>% 
+  ggplot(aes(Year, Mean_Delegates)) + 
+  geom_line(aes(color=StateTerritory)) +
+  geom_point() +
+  theme_bw() +
+  labs(x="Year", y='Mean Delegates', title= 'Non-LDC/SIDS: COP Attendance') +
+  theme(plot.title = element_text(hjust = 0.5, face='bold', size = 16),
+        axis.title = element_text(size = 14),
+        axis.text = element_text(face='bold', size = 12),
+        legend.text=element_text(size=10)) +
+  scale_color_discrete(name="Country (Average Delegates)")
+```
+
+<br> <br>
+
+#### Summary Table: Top 10 & Bottom 10 Attending Non-LDC/SIDS Countries
+
+<br>
+
+```{r, include=TRUE, echo=FALSE, render=lemon_print}
+bdf_avg_all <- bdf_avg_all %>% na.omit() %>% mutate(Mean_Delegates = round(Mean_Delegates,1)) %>% arrange(desc(Mean_Delegates)) %>% rename('State Territory' = StateTerritory,'Mean Delegates' = Mean_Delegates)
+ht(as.data.frame(bdf_avg_all),10)
+```
+
+<br> <br>
+
+^i \<3 tina^
+
+```{r}
+# LDC SIDS breakdown
+# Add COP locations to last graph
+# Address Tina's email
+```
