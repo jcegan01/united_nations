@@ -1,0 +1,454 @@
+---
+title: "CBD COP Analysis"
+author: "Jeff Cegan"
+date: "`r Sys.Date()`"
+output: html_document
+editor_options:
+  chunk_output_type: console
+---
+
+<br>
+
+```{r global-options, include=TRUE, echo=FALSE}
+knitr::opts_chunk$set(fig.width=9, fig.height=6, fig.align = 'left', fig.path='knitr_figs/',
+                          include=FALSE,echo=FALSE, warning=FALSE, message=FALSE)
+#include chunk, echo code, don't print messages or warnings
+```
+
+```{r load packages,echo=FALSE}
+pkgs = c('lubridate','downloadthis','plotly','skimr','lemon',"tidyverse")
+inst = lapply(pkgs, library, character.only = TRUE) # load them
+knit_print.data.frame <- lemon_print
+```
+
+```{r read input files}
+loc <- read.csv('input/cbd_location.csv', stringsAsFactors=TRUE)
+  loc <- loc %>% mutate(Year=year(ymd(loc$Date))) #add year column
+  loc <- loc %>% mutate(Month=month(ymd(loc$Date))) #add year column 
+  loc <- loc %>% mutate(Date=date(paste0(Year,'-',Month,"-01"))) #add year column
+att <- read.csv('input/cbd_attendance.csv', stringsAsFactors=TRUE)
+fil <- read.csv('input/filters.csv', stringsAsFactors=TRUE) %>% rename(CountryCode = Country.code, StateTerritory = State.Territory)
+```
+
+```{r}
+#clean attendance dataset
+#converted all 'n/a' to NA manually in excel
+#redundant information in state territory (deleted from CBD attendance)
+#pivot longer
+attl <- att %>% select(!Party_birth) %>% 
+  pivot_longer(cols=starts_with('COP'),names_to = 'Conference', values_to = 'Delegates')
+```
+
+```{r}
+#checking merges
+  length(unique(attl$CountryCode))
+  length(unique(fil$CountryCode))
+inner<- inner_join(attl,fil, by = 'CountryCode')
+  length(unique(inner$CountryCode))
+
+#join attendance and filter tables
+df <- left_join(attl, fil, by = 'CountryCode')
+  length(unique(df$CountryCode))
+
+#join location table
+df <- left_join(df, loc, by = 'Conference')
+```
+
+<br>
+
+```{r}
+#create custom theme for graphs
+theme_cegan <- function(){ 
+    font <- "Calibri"   #assign font family up front
+    
+    theme_bw() %+replace%    #replace elements we want to change
+    
+    theme(
+      
+      #grid elements
+      # panel.grid.major = element_blank(),    #strip major gridlines
+      # panel.grid.minor = element_blank(),    #strip minor gridlines
+      # axis.ticks = element_blank(),          #strip axis ticks
+      
+      #text elements
+      plot.title = element_text(             #title
+                   family = font,            #set font family
+                   size = 16,                #set font size
+                   face = 'bold',            #bold typeface
+                   hjust = .5,               #center align
+                   vjust = 2),               #raise slightly
+      
+      plot.subtitle = element_text(          #subtitle
+                   family = font,            #font family
+                   size = 14),               #font size
+      
+      plot.caption = element_text(           #caption
+                   family = font,            #font family
+                   size = 9,                 #font size
+                   hjust = 1),               #right align
+      
+      axis.title = element_text(             #axis titles
+                   family = font,            #font family
+                   size = 16),               #font size
+      
+      axis.text = element_text(              #axis text
+                   family = font,            #axis family
+                   face = 'bold',            #bold typeface
+                   size = 14),               #font size
+      
+      axis.text.x = element_text(            #margin for axis text
+                    margin=margin(5, b = 10)),
+
+      axis.title.y = element_text(           #margin for axis text
+                    angle = 90,
+                    margin = margin(t = 0, r = 10, b = 0, l = 0)),
+      
+      # axis.title.y = element_text(           #margin for axis text
+      #               margin = margin(t = 0, r = 10, b = 0, l = 0)),
+      #       
+      legend.text = element_text(
+                    family = font,          #axis family
+                    size=14)                #font size
+    )
+}
+```
+
+<br>
+
+<h2 align="center">
+
+Summary Tables
+
+</h2>
+
+<br>
+
+#### All 196 countries from the CBD attendance table have a filter counterpart (LDC/SIDS assignment)
+
+```{r}
+att %>% filter(!CountryCode %in% 
+  unique(inner$CountryCode)) %>% 
+  distinct(CountryCode) %>% 
+  rename('Country Code' = CountryCode)
+```
+
+<br>
+
+#### Countries from the filter table (LDC/SIDS information) without CBD attendance
+
+<br>
+
+```{r, include=TRUE, echo=F, render=lemon_print}
+#tinas_selection <- c('AND','PRK','SSD','NIU','PSE') 
+  
+fil %>% select(CountryCode, StateTerritory) %>% 
+  filter(!CountryCode %in% unique(inner$CountryCode)) %>% 
+  distinct(CountryCode, StateTerritory) %>% 
+  rename('State Territory' = StateTerritory,'Country Code' = CountryCode) 
+#filter(CountryCode %in% tinas_selection)
+```
+
+<br>
+
+#### LDC vs. SIDS (Total Countries)
+
+<br>
+
+```{r}
+#View(df)
+begin<-nrow(df)
+df %>% filter(is.na(LDC) | is.na(SIDS)) #14 EUE entries missing label
+
+
+nrow(df)
+df <- df %>% 
+  na.omit() %>% 
+  mutate(Status = ifelse(LDC == 1 & SIDS == 0, "LDC",
+                                     ifelse(LDC == 0 & SIDS == 1, "SIDS",
+                                            ifelse(LDC == 1 & SIDS == 1, "Both", 'Neither'))))
+end <- nrow(df) 
+begin - end #dropped the 275 NA attendance
+length(unique(df$CountryCode)) #196 unique countries 
+```
+
+```{r, include=TRUE, echo=F, render=lemon_print}
+#count number of countries in status category for table
+zdf_table <- df %>%
+  select(Status, CountryCode) %>%
+  group_by(Status) %>%
+  distinct() %>%
+  count(Status)
+
+zdf_table <- data.frame(zdf_table)
+zdf_table
+```
+
+<br>
+
+<h2 align="center">
+
+Median Graphs
+
+</h2>
+
+<br>
+
+<br>
+
+#### 4 Categories: LDC vs. SIDS (Median Delegates)
+
+<br>
+
+```{r}
+## 4 CATEGORIES ##
+#aggregate by status for graph
+zdf <- df %>% 
+  group_by(Status,Date) %>% 
+  summarize(Median_Delegates = median(Delegates),Mean_Delegates = mean(Delegates), n = n())
+
+## 3 CATEGORIES ##
+#Both to move into LDC and SIDS counts as seperate entries
+nrow(df)
+  #subset of Both LDC and SIDS rows
+  zdf_noboth_1 <- df %>% filter(Status == 'Both')
+    nrow(zdf_noboth_1)
+  zdf_noboth_1a <- zdf_noboth_1 %>% mutate(Status = 'LDC')
+  zdf_noboth_1b <- zdf_noboth_1 %>% mutate(Status = 'SIDS')
+  #delete LDC and SIDS rows
+  zdf_noboth_2 <- df %>% filter(Status != 'Both')  
+    nrow(zdf_noboth_2)    
+  #append subset
+  zdf_noboth_3 <- bind_rows(zdf_noboth_1a,zdf_noboth_1b,zdf_noboth_2)
+#check
+  nrow(zdf_noboth_3) == nrow(df) + nrow(zdf_noboth_1)
+ 
+zdf_noboth <- zdf_noboth_3 %>% 
+  group_by(Status,Date) %>% 
+  summarize(Median_Delegates = median(Delegates),Mean_Delegates = mean(Delegates), n = n())
+```
+
+```{r, include=TRUE, echo=F}
+## GRAPH 4 CATEGORIES ##
+#order factors for legend
+zdf$Status <- factor(zdf$Status, 
+      levels=c("Neither","LDC",'SIDS','Both'),
+      labels=c("Neither","LDC",'SIDS','Both'))
+
+#Graph
+fig <- zdf %>% 
+  na.omit() %>% 
+  ggplot(aes(Date,Median_Delegates)) + 
+  geom_line(aes(color=Status, linetype=Status),lwd=.8) +
+  geom_point() +
+  theme_cegan() +
+  labs(x="Date", y='Median Delegates') + 
+  scale_color_discrete(name="") + 
+  scale_linetype_discrete(name = "") + 
+  scale_x_date(date_breaks = "5 years", 
+               date_labels = "%Y",
+               limits = as.Date(c("1992-01-01","2018-01-01"))) 
+
+fig <- fig + theme(legend.title = element_blank(),
+            legend.position = c(0.15, 0.80),
+            legend.background = element_rect(size=0.4, linetype = 'solid', color='black')) 
+
+fig
+
+fig %>% download_this(output_name = "CBD_4Cat_Median",
+    output_extension = ".png",
+    button_label = "Download Graph",
+    button_type = "success",
+    has_icon = TRUE,
+    icon = "fa fa-save")
+```
+
+------------------------------------------------------------------------
+
+<br>
+
+#### 3 Categories: LDC vs. SIDS (Median Delegates)
+
+<br>
+
+```{r, include=TRUE, echo=F}
+## GRAPH 3 CATEGORIES ##
+#order factors for legend
+zdf_noboth$Status <- factor(zdf_noboth$Status, 
+      levels=c("Neither","LDC",'SIDS'),
+      labels=c("Neither","LDC",'SIDS'))
+
+#Graph
+fig <- zdf_noboth %>% 
+  na.omit() %>% 
+  ggplot(aes(Date,Median_Delegates)) + 
+  geom_line(aes(color=Status, linetype=Status),lwd=.8) +
+  geom_point() +
+  theme_cegan() +
+  labs(x="Date", y='Median Delegates') + 
+  scale_color_discrete(name="") + 
+  scale_linetype_discrete(name = "") + 
+  scale_x_date(date_breaks = "5 years", 
+               date_labels = "%Y",
+               limits = as.Date(c("1992-01-01","2018-01-01"))) 
+
+fig <- fig + theme(legend.title = element_blank(),
+            legend.position = c(0.15, 0.80),
+            legend.background = element_rect(size=0.4, linetype = 'solid', color='black')) 
+
+fig
+
+fig %>% download_this(output_name = "CBD_3Cat_Median",
+    output_extension = ".png",
+    button_label = "Download Graph",
+    button_type = "success",
+    has_icon = TRUE,
+    icon = "fa fa-save")
+```
+
+------------------------------------------------------------------------
+
+<br>
+
+<h2 align="center">
+
+Mean Graphs
+
+</h2>
+
+<br>
+
+#### 4 Categories: LDC vs. SIDS (Mean Delegates)
+
+<br>
+
+```{r, include=TRUE, echo=F}
+## GRAPH 4 CATEGORIES ##
+#order factors for legend
+zdf$Status <- factor(zdf$Status, 
+      levels=c("Neither","LDC",'SIDS','Both'),
+      labels=c("Neither","LDC",'SIDS','Both'))
+
+#Graph
+fig <- zdf %>% 
+  na.omit() %>% 
+  ggplot(aes(Date,Mean_Delegates)) + 
+  geom_line(aes(color=Status, linetype=Status),lwd=.8) +
+  geom_point() +
+  theme_cegan() +
+  labs(x="Date", y='Mean Delegates') + 
+  scale_color_discrete(name="") + 
+  scale_linetype_discrete(name = "") + 
+  scale_x_date(date_breaks = "5 years", 
+               date_labels = "%Y",
+               limits = as.Date(c("1992-01-01","2018-01-01"))) 
+
+fig <- fig + theme(legend.title = element_blank(),
+            legend.position = c(0.15, 0.80),
+            legend.background = element_rect(size=0.4, linetype = 'solid', color='black')) 
+
+fig
+
+fig %>% download_this(output_name = "CBD_4Cat_Mean",
+    output_extension = ".png",
+    button_label = "Download Graph",
+    button_type = "success",
+    has_icon = TRUE,
+    icon = "fa fa-save")
+```
+
+------------------------------------------------------------------------
+
+<br>
+
+#### 3 Categories: LDC vs. SIDS (Mean Delegates)
+
+<br>
+
+```{r, include=TRUE, echo=F}
+## GRAPH 3 CATEGORIES ##
+#order factors for legend
+zdf_noboth$Status <- factor(zdf_noboth$Status, 
+      levels=c("Neither","LDC",'SIDS'),
+      labels=c("Neither","LDC",'SIDS'))
+
+#Graph
+fig <- zdf_noboth %>% 
+  na.omit() %>% 
+  ggplot(aes(Date,Mean_Delegates)) + 
+  geom_line(aes(color=Status, linetype=Status),lwd=.8) +
+  geom_point() +
+  theme_cegan() +
+  labs(x="Date", y='Mean Delegates') + 
+  scale_color_discrete(name="") + 
+  scale_linetype_discrete(name = "") + 
+  scale_x_date(date_breaks = "5 years", 
+               date_labels = "%Y",
+               limits = as.Date(c("1992-01-01","2018-01-01"))) 
+
+fig <- fig + theme(legend.title = element_blank(),
+            legend.position = c(0.15, 0.80),
+            legend.background = element_rect(size=0.4, linetype = 'solid', color='black')) 
+
+fig
+
+fig %>% download_this(output_name = "CBD_3Cat_Mean",
+    output_extension = ".png",
+    button_label = "Download Graph",
+    button_type = "success",
+    has_icon = TRUE,
+    icon = "fa fa-save")
+```
+
+------------------------------------------------------------------------
+
+<br>
+
+#### 3 Categories: LDC vs. SIDS (Mean Delegates) with Labels
+
+<br>
+
+```{r}
+#merge back loc cop information
+nrow(zdf_noboth)
+zdf_noboth_l <- inner_join(zdf_noboth,loc,by='Date')
+zdf_noboth_l <- zdf_noboth_l %>% 
+  mutate(Conference = ifelse(Status != 'Neither'," ",as.character(Conference)))
+nrow(zdf_noboth_l) == nrow(zdf_noboth)
+```
+
+```{r, include=TRUE, echo=F}
+## GRAPH 3 CATEGORIES ##
+
+
+#Graph
+fig <- zdf_noboth_l %>% 
+  na.omit() %>% 
+  ggplot(aes(Date,Mean_Delegates)) + 
+  geom_line(aes(color=Status, linetype=Status),lwd=.8) +
+  geom_point() +
+  geom_text(aes(label = Conference),nudge_y=1,check_overlap=T) +
+  theme_cegan() +
+  labs(x="Date", y='Mean Delegates') + 
+  scale_color_discrete(name="") + 
+  scale_linetype_discrete(name = "") + 
+  scale_x_date(date_breaks = "5 years", 
+               date_labels = "%Y",
+               limits = as.Date(c("1992-01-01","2018-01-01"))) 
+
+fig <- fig + theme(legend.title = element_blank(),
+            legend.position = c(0.15, 0.80),
+            legend.background = element_rect(size=0.4, linetype = 'solid', color='black')) 
+
+fig 
+
+fig %>% download_this(output_name = "CBD_3Cat_Mean_Labels",
+    output_extension = ".png",
+    button_label = "Download Graph",
+    button_type = "success",
+    has_icon = TRUE,
+    icon = "fa fa-save")
+```
+
+------------------------------------------------------------------------
+
+<br> <br>

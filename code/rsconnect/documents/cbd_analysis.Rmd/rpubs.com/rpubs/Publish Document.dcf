@@ -1,0 +1,11 @@
+name: Publish Document
+title:
+username:
+account: rpubs
+server: rpubs.com
+hostUrl: rpubs.com
+appId: https://api.rpubs.com/api/v1/document/894074/96f799368b184fcd8c2c5bfcf63dead1
+bundleId: https://api.rpubs.com/api/v1/document/894074/96f799368b184fcd8c2c5bfcf63dead1
+url: http://rpubs.com/jcegan01/894074
+when: 1650836298.2948
+lastSyncTime: 1650836298.29481
