@@ -1,7 +1,7 @@
 ---
-title: "COP Analysis"
+title: "UNFCCC COP Analysis"
 author: "Jeff Cegan"
-date: '2022-04-21'
+date: "`r Sys.Date()`"
 output: html_document
 editor_options:
   chunk_output_type: console
@@ -10,13 +10,13 @@ editor_options:
 <br>
 
 ```{r global-options, include=FALSE}
-knitr::opts_chunk$set(fig.width=9, fig.height=6, fig.path='knitr_figs/',
+knitr::opts_chunk$set(fig.width=9, fig.height=6, fig.align = 'left', fig.path='knitr_figs/',
                           include=FALSE,echo=TRUE, warning=FALSE, message=FALSE)
 #include chunk, echo code, don't print messages or warnings
 ```
 
 ```{r load packages}
-pkgs = c('plotly','here','skimr','janitor','plotly','lemon',"tidyverse")
+pkgs = c('downloadthis','extrafont','plotly','here','skimr','janitor','plotly','lemon',"tidyverse")
 inst = lapply(pkgs, library, character.only = TRUE) # load them
 knit_print.data.frame <- lemon_print
 ```
@@ -27,44 +27,242 @@ fil <- read.csv('input/filters.csv', stringsAsFactors=TRUE) %>% rename(CountryCo
 ```
 
 ```{r}
-length(unique(att$CountryCode))
-length(unique(fil$CountryCode))
+#checking merges
+  length(unique(att$CountryCode))
+  length(unique(fil$CountryCode))
 inner<- inner_join(att,fil, by = 'CountryCode')
-length(unique(inner$CountryCode))
+  length(unique(inner$CountryCode))
 df <- left_join(att, fil, by = 'CountryCode')
-length(unique(df$CountryCode))
+  length(unique(df$CountryCode))
 
 #cop list for graphics
 Conference <- paste0("COP ",1:21)
+```
+
+```{r}
+#create custom theme for graphs
+theme_cegan <- function(){ 
+    font <- "Calibri"   #assign font family up front
+    
+    theme_bw() %+replace%    #replace elements we want to change
+    
+    theme(
+      
+      #grid elements
+      # panel.grid.major = element_blank(),    #strip major gridlines
+      # panel.grid.minor = element_blank(),    #strip minor gridlines
+      # axis.ticks = element_blank(),          #strip axis ticks
+      
+      #text elements
+      plot.title = element_text(             #title
+                   family = font,            #set font family
+                   size = 16,                #set font size
+                   face = 'bold',            #bold typeface
+                   hjust = .5,               #center align
+                   vjust = 2),               #raise slightly
+      
+      plot.subtitle = element_text(          #subtitle
+                   family = font,            #font family
+                   size = 14),               #font size
+      
+      plot.caption = element_text(           #caption
+                   family = font,            #font family
+                   size = 9,                 #font size
+                   hjust = 1),               #right align
+      
+      axis.title = element_text(             #axis titles
+                   family = font,            #font family
+                   size = 16),               #font size
+      
+      axis.text = element_text(              #axis text
+                   family = font,            #axis family
+                   face = 'bold',            #bold typeface
+                   size = 14),               #font size
+      
+      axis.text.x = element_text(            #margin for axis text
+                    margin=margin(5, b = 10)),
+
+      axis.title.y = element_text(           #margin for axis text
+                    angle = 90,
+                    margin = margin(t = 0, r = 10, b = 0, l = 0)),
+      
+      # axis.title.y = element_text(           #margin for axis text
+      #               margin = margin(t = 0, r = 10, b = 0, l = 0)),
+      #       
+      legend.text = element_text(
+                    family = font,          #axis family
+                    size=14)                #font size
+    )
+}
 ```
 
 <br>
 
 #### Countries from the attendance table without a filter counterpart (LDC/SIDS assignment)
 
-SCG was Serbia and Montenegro when they still were one country prior to 2006. Now SCG is divided into SRB and MNE.
+SCG did not have a counterpart. SCG was both Serbia and Montenegro prior to 2006. Now SCG is divided into two countries, SRB and MNE. For this analysis, SCG attendance was assigned to SRB for the 1995-2005 time period.
 
--   Should we equate an SCG (1) attendance to both an SRB (1) and MNE (1) attendance for years SCG attended and SRB, MNE didn't exist? Or should we treat SCG as a separate country entirely? Or should we ignore?
+```{r}
+#SCG was Serbia and Montenegro when they still were one country prior to 2006. Now SCG is divided into SRB and MNE. Assign SCG attendance to SRB
+#SCG and SRB don't overlap in time '95-'05; '96-'15 respectively
+#Replace SCG label with SRB
+att <- att %>% mutate(CountryCode = replace(CountryCode, CountryCode == 'SCG','SRB'))
+```
 
-<br>
-
-```{r, include=TRUE, echo=FALSE, render=lemon_print}
-att %>% filter(!CountryCode %in% unique(inner$CountryCode)) %>% distinct(CountryCode) %>% rename('Country Code' = CountryCode)
+```{r}
+att %>% filter(!CountryCode %in% 
+  unique(inner$CountryCode)) %>% 
+  distinct(CountryCode) %>% 
+  rename('Country Code' = CountryCode)
 ```
 
 <br>
 
-#### Countries from the filter table (LDC/SIDS information) without COP attendance
+#### Countries (Tina's subset) from the filter table (LDC/SIDS information) without COP attendance
 
 <br>
 
-```{r, include=TRUE, echo=FALSE, render=lemon_print}
-fil %>% select(CountryCode, StateTerritory) %>% filter(!CountryCode %in% unique(inner$CountryCode)) %>% distinct(CountryCode, StateTerritory) %>% rename('State Territory' = StateTerritory,'Country Code' = CountryCode)
+```{r, include=TRUE, echo=F, render=lemon_print}
+tinas_selection <- c('AND','PRK','SSD','NIU','PSE') 
+  
+fil %>% select(CountryCode, StateTerritory) %>% 
+  filter(!CountryCode %in% unique(inner$CountryCode) & CountryCode %in% tinas_selection) %>% 
+  distinct(CountryCode, StateTerritory) %>% 
+  rename('State Territory' = StateTerritory,'Country Code' = CountryCode) 
+#filter(CountryCode %in% tinas_selection)
 ```
 
 <br> <br>
 
-#### Time Series: All 192 Attending Countries (Mean Delegates)
+#### Time Series: LDC vs. SIDS (Mean Delegates)
+
+<br>
+
+```{r}
+nrow(df)
+df <- df %>% 
+  na.omit() %>% 
+  mutate(Status = ifelse(LDC == 1 & SIDS == 0, "LDC",
+                                     ifelse(LDC == 0 & SIDS == 1, "SIDS",
+                                            ifelse(LDC == 1 & SIDS == 1, "Both", 'Neither'))))
+nrow(df) #dropped the 11 unmatched SCG rows
+length(unique(df$CountryCode)) #191 unique countries 
+```
+
+```{r, include=TRUE, echo=F, render=lemon_print}
+#count number of countries in status category for table
+zdf_table <- df %>%
+  select(Status, CountryCode) %>%
+  group_by(Status) %>%
+  distinct() %>%
+  count(Status)
+
+zdf_table <- data.frame(zdf_table)
+zdf_table
+```
+
+<br>
+
+```{r}
+## 4 CATEGORIES ##
+#aggregate by status for graph
+zdf <- df %>% 
+  group_by(Status,Year) %>% 
+  summarize(Median_Delegates = median(Delegates),Mean_Delegates = mean(Delegates), n = n())
+
+## 3 CATEGORIES ##
+#Both to move into LDC and SIDS counts as seperate entries
+nrow(df)
+  #subset of Both LDC and SIDS rows
+  zdf_noboth_1 <- df %>% filter(Status == 'Both')
+    nrow(zdf_noboth_1)
+  zdf_noboth_1a <- zdf_noboth_1 %>% mutate(Status = 'LDC')
+  zdf_noboth_1b <- zdf_noboth_1 %>% mutate(Status = 'SIDS')
+  #delete LDC and SIDS rows
+  zdf_noboth_2 <- df %>% filter(Status != 'Both')  
+    nrow(zdf_noboth_2)    
+  #append subset
+  zdf_noboth_3 <- bind_rows(zdf_noboth_1a,zdf_noboth_1b,zdf_noboth_2)
+#check
+  nrow(zdf_noboth_3) == nrow(df) + nrow(zdf_noboth_1)
+ 
+zdf_noboth <- zdf_noboth_3 %>% 
+  group_by(Status,Year) %>% 
+  summarize(Median_Delegates = median(Delegates),Mean_Delegates = mean(Delegates), n = n())
+```
+
+```{r, include=TRUE, echo=F}
+## GRAPH 4 CATEGORIES ##
+#order factors for legend
+zdf$Status <- factor(zdf$Status, 
+      levels=c("Neither","LDC",'SIDS','Both'),
+      labels=c("Neither","LDC",'SIDS','Both'))
+
+#Graph
+fig <- zdf %>% 
+  na.omit() %>% 
+  ggplot(aes(Year,Median_Delegates)) + 
+  geom_line(aes(color=Status, linetype=Status),lwd=.8) +
+  geom_point() +
+  theme_cegan() +
+  labs(x="Year", y='Median Delegates') + 
+  scale_color_discrete(name="") + 
+  scale_linetype_discrete(name = "")
+
+fig <- fig + theme(legend.title = element_blank(),
+            legend.position = c(0.15, 0.80),
+            legend.background = element_rect(size=0.4, linetype = 'solid', color='black')) 
+
+# scale_linetype_manual(values = c("Neither" = 'solid',"LDC" = 'dotted','SIDS' = 'solid','Both' = 'dotted')) +  
+#   guides(linetype = FALSE)
+
+fig
+
+fig %>% download_this(output_name = "UNFCCC_4Cat_Median",
+    output_extension = ".png",
+    button_label = "Download Graph",
+    button_type = "success",
+    has_icon = TRUE,
+    icon = "fa fa-save")
+```
+
+<br>
+
+```{r, include=TRUE, echo=F}
+## GRAPH 3 CATEGORIES ##
+#order factors for legend
+zdf_noboth$Status <- factor(zdf_noboth$Status, 
+      levels=c("Neither","LDC",'SIDS'),
+      labels=c("Neither","LDC",'SIDS'))
+
+#Graph
+fig <- zdf_noboth %>% 
+  na.omit() %>% 
+  ggplot(aes(Year,Median_Delegates)) + 
+  geom_line(aes(color=Status, linetype=Status),lwd=.8) +
+  geom_point() +
+  theme_cegan() +
+  labs(x="Year", y='Median Delegates') + 
+  scale_color_discrete(name="") + 
+  scale_linetype_discrete(name = "")
+
+fig <- fig + theme(legend.title = element_blank(),
+            legend.position = c(0.15, 0.80),
+            legend.background = element_rect(size=0.4, linetype = 'solid', color='black')) 
+
+fig
+
+fig %>% download_this(output_name = "UNFCCC_3Cat_Median",
+    output_extension = ".png",
+    button_label = "Download Graph",
+    button_type = "success",
+    has_icon = TRUE,
+    icon = "fa fa-save")
+```
+
+<br> <br>
+
+#### Time Series: All 191 Attending Countries (Mean Delegates)
 
 <br>
 
@@ -79,48 +277,63 @@ rowstart == rowend
 adf <- df %>% group_by(LDC_SIDS,Year) %>% summarize(Median_Delegates = median(Delegates),Mean_Delegates = mean(Delegates), n = n())
 ```
 
-```{r, include=TRUE, echo=FALSE}
+```{r}
+#order factors for legend
+adf$LDC_SIDS <- factor(adf$LDC_SIDS, 
+      levels=c("Non LDC/SIDS","LDC or SIDS"),
+      labels=c("Non LDC/SIDS","LDC or SIDS"))
+```
+
+```{r, include=TRUE, echo=F}
 adf <- adf %>% na.omit() %>% mutate(Conference = c(Conference))
 
 fig <- adf %>% 
   na.omit() %>% 
   ggplot(aes(Year,Mean_Delegates,label=Conference)) + 
-  geom_line(aes(color=LDC_SIDS)) +
+  geom_line(aes(color=LDC_SIDS, linetype=LDC_SIDS),lwd=1) +
   geom_point() +
-  theme_bw() +
-  labs(x="Year", y='Mean Delegates', title= 'COP Attendance') +
-  theme(plot.title = element_text(hjust = 0.5, face='bold', size = 16),
-        axis.title = element_text(size = 14),
-        axis.text = element_text(face='bold', size = 12),
-        legend.text=element_text(size=12)) +
-  scale_color_discrete(name="")
+  theme_cegan() +
+  labs(x="Year", y='Mean Delegates') + 
+  scale_color_discrete(name="") + 
+  scale_linetype_discrete(name = "")
 
-fig %>% ggplotly(tooltip = c('Conference','Mean_Delegates'))
+fig # %>% ggplotly(tooltip = c('Conference','Mean_Delegates'))
+
+fig %>% download_this(output_name = "UNFCCC_01_MeanDelegates",
+    output_extension = ".png",
+    button_label = "Download Graph",
+    button_type = "success",
+    has_icon = TRUE,
+    icon = "fa fa-save")
 ```
 
 <br> <br>
 
-#### Time Series: All 192 Attending Countries (Median Delegates)
+#### Time Series: All 191 Attending Countries (Median Delegates)
 
 <br>
 
-```{r, include=TRUE, echo=FALSE}
+```{r, include=TRUE, echo=F}
 adf <- adf %>% na.omit() %>% mutate(Conference = c(Conference))
 
 fig <- adf %>% 
   na.omit() %>% 
   ggplot(aes(Year,Median_Delegates,label=Conference)) + 
-  geom_line(aes(color=LDC_SIDS)) +
+  geom_line(aes(color=LDC_SIDS, linetype=LDC_SIDS),lwd=1) +
   geom_point() +
-  theme_bw() +
-  labs(x="Year", y='Median Delegates', title= 'COP Attendance') +
-  theme(plot.title = element_text(hjust = 0.5, face='bold', size = 16),
-        axis.title = element_text(size = 14),
-        axis.text = element_text(face='bold', size = 12),
-        legend.text=element_text(size=12)) +
-  scale_color_discrete(name="")
+  theme_cegan() +
+  labs(x="Year", y='Median Delegates') + 
+  scale_color_discrete(name="") + 
+  scale_linetype_discrete(name = "")
 
-fig %>% ggplotly(tooltip = c('Conference','Median_Delegates'))
+fig # %>% ggplotly(tooltip = c('Conference','Median_Delegates'))
+
+fig %>% download_this(output_name = "UNFCCC_01_MedianDelegates",
+    output_extension = ".png",
+    button_label = "Download Graph",
+    button_type = "success",
+    has_icon = TRUE,
+    icon = "fa fa-save")
 ```
 
 <br> <br>
@@ -138,28 +351,50 @@ $$
 #LDC_SIDS column to factor prior to pivot wider
 #Calculate percentage increase of LDC/non-LDC for graph
 adf$LDC_SIDS <- as.factor(gsub("/","",gsub(" ","",adf$LDC_SIDS)))
+
 adf_perc <- adf %>% select(LDC_SIDS,Year,Mean_Delegates) %>% 
   pivot_wider(names_from = LDC_SIDS, values_from = Mean_Delegates) %>% 
   mutate(Multiplier = NonLDCSIDS/LDCorSIDS)
+
 adf_perc
+# zdf
+
 ```
 
-```{r, include=TRUE, echo=FALSE}
+### Non-LDC SIDS: Share at the Table
+
+<br>
+
+#### [Interactive Plot:]{style="color: #795695;"}
+
+```{r, include=TRUE, echo=F}
 #Bar graph LDC/non-LDC percentage over time
 fig<-adf_perc %>%  
   ggplot(aes(x=Year, y=Multiplier,label=Conference)) + 
   geom_bar(stat="identity", fill='steel blue') +
-  theme_bw() +
-  labs(x="Year", y='Multiplier', title= 'Non-LDC SIDS: Share at the Table') +
-  theme(plot.title = element_text(hjust = 0.5, face='bold', size = 16),
-       axis.title = element_text(size = 14),
-       axis.text = element_text(face='bold', size = 12),
-       axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0)),
-       legend.text=element_text(size=10)) 
+  labs(x="Year", y='Multiplier') +
+  theme_cegan()
   # scale_y_continuous(labels = scales::percent_format(scale = 1))
 
-fig %>% ggplotly(tooltip = c('Multiplier','Conference'), width = 680)
+pfig <- fig + geom_bar(stat="identity", fill='#795695') 
+pfig %>% ggplotly(tooltip = c('Multiplier','Conference'), height= 500, width = 670)
+```
 
+<br>
+
+#### [Plot for Paper (higher-quality download):]{style="color: #4682B4;"}
+
+```{r, include=TRUE, echo=F, fig.height=5, fig.width=7}
+fig
+```
+
+```{r, include=TRUE, echo=F}
+fig %>% download_this(output_name = "UNFCCC_02_Multiplier",
+    output_extension = ".png",
+    button_label = "Download Graph",
+    button_type = "success",
+    has_icon = TRUE,
+    icon = "fa fa-save")
 ```
 
 <br> <br>
@@ -200,13 +435,20 @@ bdf_avg <- bdf %>%
   summarise(Mean_Delegates = mean(Mean_Delegates))
 
 #append top and bottom for table
-bdf_avg_all <- rbind(bdf_topcountries %>% group_by(StateTerritory) %>% summarize(Mean_Delegates =mean(Mean_Delegates)),bdf_bottomcountries_all %>% group_by(StateTerritory) %>% summarize(Mean_Delegates =mean(Mean_Delegates)))
+bdf_avg_all <- rbind(
+  bdf_topcountries %>% 
+    group_by(StateTerritory) %>% 
+    summarize(Mean_Delegates =mean(Mean_Delegates)),
+  bdf_bottomcountries_all %>% 
+    group_by(StateTerritory) %>% 
+    summarize(Mean_Delegates =mean(Mean_Delegates))
+  )
 ```
 
-```{r, include=TRUE, echo=FALSE}
+```{r, include=TRUE, echo=F}
 
 #legend labels in order, modified names
-  names <- c("Brazil","France","USA","Japan","Canada","China","Korea","Denmark","Germany",              "Indonesia","Other Non-LDC/SIDS")
+  names <- c("Brazil","France","USA","Japan","Canada","China","Korea","Denmark","Germany","Indonesia","Other Non-LDC/SIDS")
   
 #order values for labels  
   m_values <- bdf_avg %>% select(Mean_Delegates) %>% arrange(desc(Mean_Delegates))
@@ -239,8 +481,13 @@ bdf %>%
 
 <br>
 
-```{r, include=TRUE, echo=FALSE, render=lemon_print}
-bdf_avg_all <- bdf_avg_all %>% na.omit() %>% mutate(Mean_Delegates = round(Mean_Delegates,1)) %>% arrange(desc(Mean_Delegates)) %>% rename('State Territory' = StateTerritory,'Mean Delegates' = Mean_Delegates)
+```{r, include=TRUE, echo=F, render=lemon_print}
+bdf_avg_all <- bdf_avg_all %>% 
+  na.omit() %>% 
+  mutate(Mean_Delegates = round(Mean_Delegates,1)) %>% 
+  arrange(desc(Mean_Delegates)) %>% 
+  rename('State Territory' = StateTerritory,'Mean Delegates' = Mean_Delegates)
+
 ht(as.data.frame(bdf_avg_all),10)
 ```
 
